@@ -1,12 +1,6 @@
 # Timesheet analysis for Work from Home percentage
 
-Simple Docker container that 
-
-1. takes a folder with timesheet pdfs
-2. exports their content as formatted text and 
-3. pipes that to a Python script, which
-4. sums up all worked hours in the office or at home and 
-5. outputs the percentage of having worked from home
+Simple Docker container that outputs the Work From Home percentage for each timesheet pdf in a folder.
 
 ## How to use it
 
@@ -49,7 +43,7 @@ pdftotext -layout input.pdf output.txt
 Pipe `output.txt` through the python script
 
 ```
-cat output4.txt | python process_timesheet.py
+cat output.txt | python process_timesheet.py
 ```
 
 ### Option 2
