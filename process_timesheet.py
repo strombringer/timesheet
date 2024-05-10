@@ -37,8 +37,14 @@ for line in fileinput.input():
 
 # Calculate the percentage relation between WfH and WfO
 if resultWfO != 0:
-    percent_of_work_from_home =  resultWfH / (resultWfH + resultWfO) * 100
-    print(timeframe, "Work from Home:", "{:.2f}".format(percent_of_work_from_home) + "%")
+    total_hours = resultWfH + resultWfO
+    percent_of_work_from_home =  resultWfH / total_hours * 100
+    print(timeframe, ":")
+    print("Work from Home:", "{:.2f}".format(percent_of_work_from_home) + "%")
+    print("Hours Home:\t", "{:.2f}".format(resultWfH))
+    print("Hours Office:\t", "{:.2f}".format(resultWfO))
+    print("Hours total:\t", "{:.2f}".format(total_hours))
+    print("-----")
 elif resultWfH > 0:
     print(timeframe, "Work from Home: 100%")
 else:
