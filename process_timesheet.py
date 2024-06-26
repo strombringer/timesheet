@@ -9,6 +9,7 @@ regexWfH = re.compile(r'ganz.+Mobilarbeit\s+(?P<actualWorkTime>[\d.,]+)')
 regexWfHpartial = re.compile(r'anteilige Mobilarbeit:\s+(?P<actualWorkTime>[\d.,]+)')
 regexWfHthatWeek = re.compile(r'Wochenerfassung Mobilarbeit\s+(?P<actualWorkTime>[\d.,]+)')
 regexWfO = re.compile(r'(?P<dayOfMonth>\d{2}) (?P<dayOfWeek>\w{2}).*(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5}).*(?P<overTime>[\d.,]{4,5})')
+regexWfOtraining = re.compile(r'Weiterbildung\s+(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5})')
 
 def get_hours_worked(match):
     return float(match.group('actualWorkTime').replace(',', '.'))
@@ -24,6 +25,8 @@ for line in fileinput.input():
     if (match := regex_timeframe.search(line)):
         timeframe = match.groups()[0] + "-" + match.groups()[1]
     elif (match := regexWfO.search(line)):
+        resultWfO += get_hours_worked(match)
+    elif (match := regexWfOtraining.search(line)):
         resultWfO += get_hours_worked(match)
     elif (match := regexWfH.search(line)):
         resultWfH += get_hours_worked(match)
