@@ -2,13 +2,14 @@ import argparse
 import re
 import json
 from dataclasses import dataclass
+import fileinput
 
 @dataclass(unsafe_hash=True)
 class TimesheetReport:
-    timeframe: str
-    work_from_home: float
-    work_from_office: float
-    target_work_from_home_quota: float
+    timeframe: str = ''
+    work_from_home: float = 0
+    work_from_office: float = 0
+    target_work_from_home_quota: float = 0
 
     def total_hours_worked(self) -> float:
         return self.work_from_home + self.work_from_office
@@ -34,18 +35,18 @@ class TimesheetProcessor:
         r'Weiterbildung\s+(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5})', # training
     ]
 
-    def __init__(self, input_file):
+    def __init__(self, input_source, quota):
         # Compile the regex patterns
         self.compiled_regex_wfh = [re.compile(pattern) for pattern in self.regex_wfh]
         self.compiled_regex_wfo = [re.compile(pattern) for pattern in self.regex_wfo]
 
-        self.input_file = input_file
-        self.report = self._load_data()
+        self.input_source = input_source
+        self.report = TimesheetReport(target_work_from_home_quota=quota)
+        self._load_data(self.report)
 
-    def _load_data(self) -> TimesheetReport:
+    def _load_data(self, data) -> TimesheetReport:
         # Logic to load data from input_file
-        data = TimesheetReport()
-        with open(self.input_file, 'r') as file:
+        with fileinput.input(files=self.input_source if self.input_source else ('-',)) as file:
             for line in file:
                 if (match := self.regex_timeframe.search(line)):
                     data.timeframe = match.groups()[0] + "-" + match.groups()[1]
@@ -64,7 +65,7 @@ class TimesheetProcessor:
                                 break
         return data
 
-    def _get_hours_worked(match):
+    def _get_hours_worked(self, match):
         return float(match.group('actualWorkTime').replace(',', '.'))
 
     def output_as_text(self):
@@ -84,22 +85,21 @@ class TimesheetProcessor:
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Process timesheet data and calculate the work from home quota")
-    parser.add_argument('input_file', help='Path to the input file')
-    parser.add_argument('target_quota', help='Target work from home quota. default=70 (%)')
-    parser.add_argument('output_format', choices=['text', 'csv', 'json'], help='Desired output format')
+    parser.add_argument('input_source', nargs='?', default=None, help='Path to the input file or use stdin if not provided')
+    parser.add_argument('-q', '--quota', help='Target work from home quota. default=70 (%)', type=float, default=70)
+    parser.add_argument('-f', '--format', choices=['text', 'csv', 'json'], help='Desired output format. default=text', default='text')
     return parser.parse_args()
 
 def main():
     args = parse_arguments()
 
-    processor = TimesheetProcessor(args.input_file)
-    processor.transform_data()
+    processor = TimesheetProcessor(args.input_source, args.quota)
 
-    if args.output_format == 'text':
+    if args.format == 'text':
         processor.output_as_text()
-    elif args.output_format == 'csv':
+    elif args.format == 'csv':
         processor.output_as_csv()
-    elif args.output_format == 'json':
+    elif args.format == 'json':
         processor.output_as_json()
 
 if __name__ == '__main__':
