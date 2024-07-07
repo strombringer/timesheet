@@ -12,7 +12,14 @@ docker build -t timesheet:latest .
 
 ### Run Docker container
 
-Assuming you're on a Windows machine and are in the folder that contains your timesheet pdfs:
+Run the docker container from within the folder that contains your timesheet pdfs:
+
+Unix/MacOS:
+```
+docker run -v $(pwd):/data timesheet
+```
+
+Windows:
 ```
 docker run -v ${pwd}:/data timesheet
 ```
