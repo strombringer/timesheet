@@ -60,3 +60,12 @@ Output pdftotext to stdout and pipe that directly through the Python script:
 ```
 pdftotext -layout input.pdf - | python process_timesheet.py
 ```
+
+
+## Examples
+
+### Pretty-printed json with jq
+
+```
+cat output.txt | python process_timesheet.py -f json | jq .
+```

@@ -1,8 +1,9 @@
+from dataclasses import dataclass, asdict, field
+
 import argparse
-import re
-import json
-from dataclasses import dataclass
 import fileinput
+import json
+import re
 
 @dataclass(unsafe_hash=True)
 class TimesheetReport:
@@ -16,7 +17,7 @@ class TimesheetReport:
     
     def actual_work_from_home_quota(self) -> float:
         if (self.work_from_home != 0):
-            return self.work_from_home / self.total_hours_worked() * 100
+            return round(self.work_from_home / self.total_hours_worked() * 100, 2)
         else:
             return 100
         
@@ -49,7 +50,7 @@ class TimesheetProcessor:
         with fileinput.input(files=self.input_source if self.input_source else ('-',)) as file:
             for line in file:
                 if (match := self.regex_timeframe.search(line)):
-                    data.timeframe = match.groups()[0] + "-" + match.groups()[1]
+                    data.timeframe = match.groups()[0] + " - " + match.groups()[1]
                 else:
                     matched = False
                     for regex in self.compiled_regex_wfh:
@@ -80,7 +81,14 @@ class TimesheetProcessor:
         print("TODO: csv")
 
     def output_as_json(self):
-        print("TODO: json")
+        instance = self.report
+
+        data = asdict(instance) # get all fields of the report object
+        for name in dir(instance): # get all methods of the report object and their return values
+            if callable(getattr(instance, name)) and not name.startswith("__"):
+                data[name] = getattr(instance, name)()
+        
+        print(json.dumps(data))
 
 
 def parse_arguments():
