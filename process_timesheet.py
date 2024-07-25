@@ -1,4 +1,5 @@
 from dataclasses import dataclass, asdict, field
+from datetime import datetime
 
 import argparse
 import fileinput
@@ -7,23 +8,38 @@ import re
 
 @dataclass(unsafe_hash=True)
 class TimesheetReport:
+    date_format: str = ''
     timeframe: str = ''
+    timeframe_start: datetime = datetime.now()
+    timeframe_end: datetime = datetime.now()
     work_from_home: float = 0
     work_from_office: float = 0
     target_work_from_home_quota: float = 0
+    daily_work_hours: float = 0
 
     def total_hours_worked(self) -> float:
         return self.work_from_home + self.work_from_office
     
+    def target_work_from_home_hours(self) -> float:
+        return round(self.total_hours_worked() * self.target_work_from_home_quota / 100, 2)
+
     def actual_work_from_home_quota(self) -> float:
         if (self.work_from_home != 0):
             return round(self.work_from_home / self.total_hours_worked() * 100, 2)
         else:
             return 100
+    
+    def target_work_from_home_hours_delta(self) -> float:
+        """The number of hours working from home, that are more (positive number) or less (negative number) than the target quota."""
+        return round(self.work_from_home - self.target_work_from_home_hours(), 2)
+    
+    def required_work_from_office_hours_to_match_quota(self) -> float:
+        """The required number of hours working from the office, to match the set 'work from home' quota."""
+        return round(self.target_work_from_home_hours_delta() * self.target_work_from_home_quota / 100, 2)
         
 class TimesheetProcessor:
-    # Define regex lists as class attributes
     regex_timeframe = re.compile(r'(\d{2}.\d{2}.\d{4}) bis (\d{2}.\d{2}.\d{4})')
+    regex_daily_work_hours = re.compile(r'.*IRTAZ:.*([\d.,]{4,5})')
 
     regex_wfh = [
         r'ganz.+Mobilarbeit\s+(?P<actualWorkTime>[\d.,]+)', # full day working from home
@@ -36,13 +52,13 @@ class TimesheetProcessor:
         r'Weiterbildung\s+(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5})', # training
     ]
 
-    def __init__(self, input_source, quota):
+    def __init__(self, input_source, quota, date_format):
         # Compile the regex patterns
         self.compiled_regex_wfh = [re.compile(pattern) for pattern in self.regex_wfh]
         self.compiled_regex_wfo = [re.compile(pattern) for pattern in self.regex_wfo]
 
         self.input_source = input_source
-        self.report = TimesheetReport(target_work_from_home_quota=quota)
+        self.report = TimesheetReport(target_work_from_home_quota=quota, date_format=date_format)
         self._load_data(self.report)
 
     def _load_data(self, data) -> TimesheetReport:
@@ -51,6 +67,10 @@ class TimesheetProcessor:
             for line in file:
                 if (match := self.regex_timeframe.search(line)):
                     data.timeframe = match.groups()[0] + " - " + match.groups()[1]
+                    data.timeframe_start = datetime.strptime(match.groups()[0], data.date_format)
+                    data.timeframe_end = datetime.strptime(match.groups()[1], data.date_format)
+                elif (match := self.regex_daily_work_hours.search(line)):
+                    data.daily_work_hours = float(match.groups()[0].replace(',', '.'))
                 else:
                     matched = False
                     for regex in self.compiled_regex_wfh:
@@ -88,20 +108,21 @@ class TimesheetProcessor:
             if callable(getattr(instance, name)) and not name.startswith("__"):
                 data[name] = getattr(instance, name)()
         
-        print(json.dumps(data))
+        print(json.dumps(data, sort_keys=True, default=str))
 
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description="Process timesheet data and calculate the work from home quota")
     parser.add_argument('input_source', nargs='?', default=None, help='Path to the input file or use stdin if not provided')
     parser.add_argument('-q', '--quota', help='Target work from home quota. default=70 (%)', type=float, default=70)
+    parser.add_argument('-d', '--dateformat', help='The date format used in the timesheet. Required for parsing. default=%d.%m.%Y', type=str, default='%d.%m.%Y')
     parser.add_argument('-f', '--format', choices=['text', 'csv', 'json'], help='Desired output format. default=text', default='text')
     return parser.parse_args()
 
 def main():
     args = parse_arguments()
 
-    processor = TimesheetProcessor(args.input_source, args.quota)
+    processor = TimesheetProcessor(args.input_source, args.quota, args.dateformat)
 
     if args.format == 'text':
         processor.output_as_text()
