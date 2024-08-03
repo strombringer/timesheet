@@ -50,7 +50,7 @@ class TimesheetReport:
     
     def maximum_work_from_home_hours_left(self) -> float:
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
-        return round(remainingExpectedHoursThisMonth * self.target_work_from_home_quota / 100, 2)
+        return round(remainingExpectedHoursThisMonth - self.projected_required_work_from_office_hours(), 2)
 
     
     def projected_required_work_from_office_hours(self) -> float:
@@ -146,7 +146,7 @@ class TimesheetProcessor:
 
         is_above_target_quota = self.report.actual_work_from_home_quota() > self.report.target_work_from_home_quota
         color = RED if is_above_target_quota else GREEN
-        print(self.report.timeframe, ":")        
+        print(self.report.timeframe, ":", sep='')        
         print("Hours Home:\t", "{:.2f}".format(self.report.work_from_home))
         print("Hours Office:\t", "{:.2f}".format(self.report.work_from_office))
         print("Hours total:\t", "{:.2f}".format(self.report.total_hours_worked()))
@@ -160,8 +160,8 @@ class TimesheetProcessor:
         print()
         print("Remaining working days this month:", self.report.remaining_working_days)
         print("Public holidays considered:", self.report.holidays_current_month)
-        print("Target working hours per day:", self.report.daily_work_hours)
         print()
+        print("Target working hours per day:", self.report.daily_work_hours)
 
         maxHomeOfficeLeft = self.report.maximum_work_from_home_hours_left()
         minOfficeLeft = self.report.projected_required_work_from_office_hours()
