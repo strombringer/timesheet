@@ -50,15 +50,15 @@ class TimesheetReport:
     
     def maximum_work_from_home_hours_left(self) -> float:
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
-        return round(remainingExpectedHoursThisMonth - self.projected_required_work_from_office_hours(), 2)
+        totalWorkFromHomePossibleThisMonth = (self.total_hours_worked() + remainingExpectedHoursThisMonth) * self.target_work_from_home_quota / 100
+        return round(totalWorkFromHomePossibleThisMonth - self.work_from_home, 2)
 
     
     def projected_required_work_from_office_hours(self) -> float:
         """The projected required number of hours working from the office, assuming set daily work hours and remaining days of the month, to match the set 'work from home' quota."""
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
-        remainingExpectedOfficeHoursThisMonth = remainingExpectedHoursThisMonth * (100 - self.target_work_from_home_quota) / 100
-        requiredOfficeHoursToMatchQuota = self.required_work_from_office_hours_to_match_quota() + remainingExpectedOfficeHoursThisMonth
-        return round(requiredOfficeHoursToMatchQuota, 2)
+        totalWorkFromOfficePossibleThisMonth = (self.total_hours_worked() + remainingExpectedHoursThisMonth) * (100 - self.target_work_from_home_quota) / 100
+        return round(totalWorkFromOfficePossibleThisMonth - self.work_from_office, 2)
 
 class TimesheetProcessor:
     regex_timeframe = re.compile(r'(\d{2}.\d{2}.\d{4}) bis (\d{2}.\d{2}.\d{4})')
