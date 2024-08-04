@@ -11,14 +11,16 @@ Run the docker container from within the folder that contains your timesheet pdf
 Unix/MacOS:
 
 ```bash
-docker run -v $(pwd):/data strombringer/timesheet
+docker run -t -v $(pwd):/data strombringer/timesheet
 ```
 
 Windows:
 
 ```bash
-docker run -v ${pwd}:/data strombringer/timesheet
+docker run -t -v ${pwd}:/data strombringer/timesheet
 ```
+
+The `-t` parameter is only needed for the highlighting of the current home office quota. Skip it, if you don't need that.
 
 #### Parameters (WIP - currently only usable directly with the Python script)
 
