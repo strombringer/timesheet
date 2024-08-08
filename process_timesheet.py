@@ -17,6 +17,10 @@ class TimesheetReport:
     timeframe: str = ''
     timeframe_start: datetime = datetime.now()
     timeframe_end: datetime = datetime.now()
+
+    total_hours_reported: float = 0
+    """The total hours worked, as reported in the timesheet"""
+    
     work_from_home: float = 0
     work_from_office: float = 0
     target_work_from_home_quota: float = 0
@@ -25,15 +29,19 @@ class TimesheetReport:
     remaining_working_days: int = 0
     holidays_current_month: list[str] = field(default_factory = lambda: ([]))
 
-    def total_hours_worked(self) -> float:
-        return self.work_from_home + self.work_from_office
+    def work_from_office_calculated(self) -> float:
+        return self.total_hours_reported - self.work_from_home
+
+    # def total_hours_calculated(self) -> float:
+    #     """The total hours worked, as calculated by the worked from home and worked from office hours"""
+    #     return self.work_from_home + self.work_from_office
     
     def target_work_from_home_hours(self) -> float:
-        return round(self.total_hours_worked() * self.target_work_from_home_quota / 100, 2)
+        return round(self.total_hours_reported * self.target_work_from_home_quota / 100, 2)
 
     def actual_work_from_home_quota(self) -> float:
         if (self.work_from_home != 0):
-            return round(self.work_from_home / self.total_hours_worked() * 100, 2)
+            return round(self.work_from_home / self.total_hours_reported * 100, 2)
         else:
             return 100
     
@@ -45,27 +53,28 @@ class TimesheetReport:
         """The required number of hours working from the office, to match the set 'work from home' quota."""
         factor = (100 - self.target_work_from_home_quota) / self.target_work_from_home_quota
 
-        return round((factor * self.work_from_home) - self.work_from_office, 2)
+        return round((factor * self.work_from_home) - self.work_from_office_calculated(), 2)
     
     def expected_working_hours_per_day(self) -> float:
         return self.weekly_work_hours / 5
     
     def maximum_work_from_home_hours_left(self) -> float:
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
-        totalWorkFromHomePossibleThisMonth = (self.total_hours_worked() + remainingExpectedHoursThisMonth) * self.target_work_from_home_quota / 100
+        totalWorkFromHomePossibleThisMonth = (self.total_hours_reported + remainingExpectedHoursThisMonth) * self.target_work_from_home_quota / 100
         return round(totalWorkFromHomePossibleThisMonth - self.work_from_home, 2)
 
     
     def projected_required_work_from_office_hours(self) -> float:
         """The projected required number of hours working from the office, assuming set daily work hours and remaining days of the month, to match the set 'work from home' quota."""
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
-        totalWorkFromOfficePossibleThisMonth = (self.total_hours_worked() + remainingExpectedHoursThisMonth) * (100 - self.target_work_from_home_quota) / 100
-        return round(totalWorkFromOfficePossibleThisMonth - self.work_from_office, 2)
+        totalWorkFromOfficePossibleThisMonth = (self.total_hours_reported + remainingExpectedHoursThisMonth) * (100 - self.target_work_from_home_quota) / 100
+        return round(totalWorkFromOfficePossibleThisMonth - self.work_from_office_calculated(), 2)
 
 class TimesheetProcessor:
     regex_timeframe = re.compile(r'(\d{2}.\d{2}.\d{4}) bis (\d{2}.\d{2}.\d{4})')
     regex_daily_work_hours = re.compile(r'.*IRTAZ:\s*([\d.,]{4,5})')
     regex_weekly_work_hours = re.compile(r'.*IRWAZ:\s*([\d.,]{4,5})')
+    regex_total_hours_reported = re.compile(r'Leistungsstunden\s+([\d.,]{4,7})')
 
     regex_wfh = [
         r'ganz.+Mobilarbeit\s+(?P<actualWorkTime>[\d.,]+)', # full day working from home
@@ -100,6 +109,8 @@ class TimesheetProcessor:
                     data.daily_work_hours = float(match.groups()[0].replace(',', '.'))
                 elif (match := self.regex_weekly_work_hours.search(line)):
                     data.weekly_work_hours = float(match.groups()[0].replace(',', '.'))
+                elif (match := self.regex_total_hours_reported.search(line)):
+                    data.total_hours_reported = float(match.groups()[0].replace(',', '.'))
                 else:
                     matched = False
                     for regex in self.compiled_regex_wfh:
@@ -181,8 +192,8 @@ class TimesheetProcessor:
         # table.add_column("Description")
 
         table.add_row("Home Hours", "{:.2f} h".format(self.report.work_from_home))
-        table.add_row("Office Hours", "{:.2f} h".format(self.report.work_from_office))
-        table.add_row("Total Hours", "{:.2f} h".format(self.report.total_hours_worked()))
+        table.add_row("Office Hours", "{:.2f} h".format(self.report.work_from_office_calculated()))
+        table.add_row("Total Hours", "{:.2f} h".format(self.report.total_hours_reported))
         table.add_row("Home office quota", quota_color + "{:.2f}".format(self.report.actual_work_from_home_quota()) + " %", end_section=True)
 
         if (is_above_target_quota):
