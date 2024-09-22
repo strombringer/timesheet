@@ -22,13 +22,31 @@ docker run -t -v ${pwd}:/data strombringer/timesheet
 
 The `-t` parameter is only needed for the highlighting of the current home office quota. Skip it, if you don't need that.
 
-#### Parameters (WIP - currently only usable directly with the Python script)
+#### Parameters
 
-|Name|Default|Description|
-|--|--|--|
-| quota | 70 | Home Office quota |
-| dateformat | %d.%m.%Y | Date format of the dates in the first line of the input files (e.g. 01.07.2024|
-| format | text \| json | text = nicely formatted report table, json = all values of the report as a json document|
+| Name | Python Shortcut | Environment Variable (Docker) | Default | Description |
+|--|--|--|--|--|
+| -quota | -q | TIMESHEET_QUOTA | 70 | Home Office quota |
+| -dateformat | -d | TIMESHEET_DATEFORMAT | %d.%m.%Y | Date format of the dates in the first line of the input files (e.g. 01.07.2024|
+| -format | -f | TIMESHEET_FORMAT |text \| json | text = nicely formatted report table, json = all values of the report as a json document|
+
+Use the keys from `Name` or `Python Shortcut` as arguments when calling the Python script directly:
+
+```bash
+cat output.txt | python process_timesheet.py -f json -quota 50 | jq .
+```
+
+or environment variables when using the Docker container
+
+```bash
+docker run -t -v $(pwd)/data:/data -e TIMESHEET_QUOTA=50 timesheet
+```
+
+or an environment file (see `config.env.tpl`) with Docker
+
+```bash
+docker run -t -v $(pwd)/data:/data --env-file config.env timesheet
+```
 
 ## Contributing
 

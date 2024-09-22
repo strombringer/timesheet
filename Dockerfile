@@ -22,4 +22,8 @@ RUN apk add poppler-utils
 ENV PATH="/opt/venv/bin:$PATH"
 COPY process_timesheet.py /app/
 
-CMD ["sh", "-c", "for f in /data/*.pdf; do pdftotext -layout \"$f\" - | python ./process_timesheet.py; done"]
+ENV TIMESHEET_QUOTA="70"
+ENV TIMESHEET_DATEFORMAT="%d.%m.%Y"
+ENV TIMESHEET_FORMAT="text"
+
+CMD ["sh", "-c", "for f in /data/*.pdf; do pdftotext -layout \"$f\" - | python ./process_timesheet.py -q ${TIMESHEET_QUOTA} -d ${TIMESHEET_DATEFORMAT} -f ${TIMESHEET_FORMAT}; done"]
