@@ -83,9 +83,9 @@ class TimesheetProcessor:
     ]
 
     regex_wfo = [
-        r'(?P<dayOfMonth>\d{2}) (?P<dayOfWeek>\w{2}).*(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5}).*(?P<overTime>[\d.,]{4,5})', # work from office
+        r'(?P<dayOfMonth>\d{2}) (?P<dayOfWeek>\w{2})((?!Dienstr/).)*(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5}).*(?P<overTime>[\d.,]{4,5})', # work from office
         r'Weiterbildung\s+(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5})', # training
-        r'\s+anger. Arbeitszeit\s+(?P<actualWorkTime>[\d.,]{4,5})',
+        r'\s+anger. Arbeitszeit\s+(?P<actualWorkTime>[\d.,]{4,5})', # business trip
     ]
 
     def __init__(self, input_source, quota, date_format):
