@@ -20,7 +20,7 @@ class TimesheetReport:
 
     total_hours_reported: float = 0
     """The total hours worked, as reported in the timesheet"""
-    
+
     work_from_home: float = 0
     work_from_office: float = 0
     target_work_from_home_quota: float = 0
@@ -35,7 +35,7 @@ class TimesheetReport:
     # def total_hours_calculated(self) -> float:
     #     """The total hours worked, as calculated by the worked from home and worked from office hours"""
     #     return self.work_from_home + self.work_from_office
-    
+
     def target_work_from_home_hours(self) -> float:
         return round(self.total_hours_reported * self.target_work_from_home_quota / 100, 2)
 
@@ -43,27 +43,27 @@ class TimesheetReport:
         if (self.work_from_home != 0):
             return round(self.work_from_home / self.total_hours_reported * 100, 2)
         else:
-            return 100
-    
+            return 0
+
     def target_work_from_home_hours_delta(self) -> float:
         """The number of hours working from home, that are more (positive number) or less (negative number) than the target quota."""
         return round(self.work_from_home - self.target_work_from_home_hours(), 2)
-    
+
     def required_work_from_office_hours_to_match_quota(self) -> float:
         """The required number of hours working from the office, to match the set 'work from home' quota."""
         factor = (100 - self.target_work_from_home_quota) / self.target_work_from_home_quota
 
         return round((factor * self.work_from_home) - self.work_from_office_calculated(), 2)
-    
+
     def expected_working_hours_per_day(self) -> float:
         return self.weekly_work_hours / 5
-    
+
     def maximum_work_from_home_hours_left(self) -> float:
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
         totalWorkFromHomePossibleThisMonth = (self.total_hours_reported + remainingExpectedHoursThisMonth) * self.target_work_from_home_quota / 100
         return round(totalWorkFromHomePossibleThisMonth - self.work_from_home, 2)
 
-    
+
     def projected_required_work_from_office_hours(self) -> float:
         """The projected required number of hours working from the office, assuming set daily work hours and remaining days of the month, to match the set 'work from home' quota."""
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
@@ -118,7 +118,7 @@ class TimesheetProcessor:
                             data.work_from_home += self._get_hours_worked(match)
                             matched = True
                             break
-                        
+
                     if not matched:
                         for regex in self.compiled_regex_wfo:
                             if (match := regex.search(line)):
@@ -130,13 +130,13 @@ class TimesheetProcessor:
 
     def _get_hours_worked(self, match):
         return float(match.group('actualWorkTime').replace(',', '.'))
-    
-    def _calculate_remaining_working_days(self, data: TimesheetReport):        
+
+    def _calculate_remaining_working_days(self, data: TimesheetReport):
         # Get the last day of the month
         date = data.timeframe_end
         next_month = date.replace(day=28) + timedelta(days=4)
         last_day_of_month = next_month - timedelta(days=next_month.day)
-        
+
         # Create an array of all remaining days in the month
         remaining_days = np.arange(date + timedelta(days=1), last_day_of_month + timedelta(days=1), dtype='datetime64[D]')
 
@@ -147,7 +147,7 @@ class TimesheetProcessor:
 
         # Filter out weekends (Saturday=5, Sunday=6) and holidays
         working_days = np.is_busday(remaining_days, holidays=holidays_current_month_only_dates)
-        
+
         data.remaining_working_days = int(np.sum(working_days))
         data.holidays_current_month = [str(k)+ ": " + v for k, v in holidays_current_month.items()]
 
@@ -163,24 +163,24 @@ class TimesheetProcessor:
         # RESET = '\033[0m' # called to return to standard terminal text color
 
         # color = RED if is_above_target_quota else GREEN
-        # print(self.report.timeframe, ":", sep='')        
+        # print(self.report.timeframe, ":", sep='')
         # print("Hours Home:\t", "{:.2f}".format(self.report.work_from_home))
         # print("Hours Office:\t", "{:.2f}".format(self.report.work_from_office))
         # print("Hours total:\t", "{:.2f}".format(self.report.total_hours_worked()))
         # print("Work from Home:", color, "{:.2f}".format(self.report.actual_work_from_home_quota()) + " %", RESET)
-        
+
         # if (is_above_target_quota):
         #     print()
         #     print("Exceeded home office hours:", "{:.2f}".format(self.report.target_work_from_home_hours_delta()))
         #     print("Required hours in office to match quota:", "{:.2f}".format(self.report.required_work_from_office_hours_to_match_quota()))
-        
+
         # print()
         # print("Remaining working days this month:", self.report.remaining_working_days)
         # print("Public holidays considered:", self.report.holidays_current_month)
         # print()
         # print("Target working hours per day:", self.report.daily_work_hours)
 
-        
+
         # print("Maximum Home Office hours left: ", maxHomeOfficeLeft, " (", math.floor(maxHomeOfficeLeft / self.report.daily_work_hours), " days)", sep='')
         # print("Projected hours working from the office needed: ", minOfficeLeft, " (", math.ceil(minOfficeLeft / self.report.daily_work_hours), " days)", sep='')
         # print("-----")
@@ -226,7 +226,7 @@ class TimesheetProcessor:
         for name in dir(instance): # get all methods of the report object and their return values
             if callable(getattr(instance, name)) and not name.startswith("__"):
                 data[name] = getattr(instance, name)()
-        
+
         print(json.dumps(data, sort_keys=True, default=str))
 
 
