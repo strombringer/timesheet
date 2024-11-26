@@ -1,0 +1,16 @@
+Zeitnachweis für Januar 2024 vom 01.01.2024 bis 02.01.2024                                                                  Seite 1 / 2
+ABC AG                                                                                                        Erstelldatum 31.01.2024
+Zentrale München
+Org.Einheit:                                     AB-123 AB-123                              Resturlaub Gesamtjahr:           30 Tage
+Personalnr:                                      000000                                                      IRTAZ:          7,00 Std
+Name:                                            Max Mustermann                                              IRWAZ:         35,00 Std
+Datum TT      Text                     Kommt H       Geht H      Pau-   Std      Soll    Mehr-    Ausser- M        GLAZ             BZK
+                                                                 sen             Std     arbeit   halb   KZ     Konto   Konto2
+
+01 MO 1 Neujahrstag                    07:00     A 15:00     A                    7,00
+02 DI                                  07:00       15:00         1,00     7,00    7,00                                              0,00
+
+
+Leistungsstunden                                                 7,00
+
+
