@@ -157,34 +157,6 @@ class TimesheetProcessor:
         maxHomeOfficeLeft = self.report.maximum_work_from_home_hours_left()
         minOfficeLeft = self.report.projected_required_work_from_office_hours()
 
-        # terminal colors
-        # RED = '\033[31m'
-        # GREEN = '\033[32m'
-        # RESET = '\033[0m' # called to return to standard terminal text color
-
-        # color = RED if is_above_target_quota else GREEN
-        # print(self.report.timeframe, ":", sep='')
-        # print("Hours Home:\t", "{:.2f}".format(self.report.work_from_home))
-        # print("Hours Office:\t", "{:.2f}".format(self.report.work_from_office))
-        # print("Hours total:\t", "{:.2f}".format(self.report.total_hours_worked()))
-        # print("Work from Home:", color, "{:.2f}".format(self.report.actual_work_from_home_quota()) + " %", RESET)
-
-        # if (is_above_target_quota):
-        #     print()
-        #     print("Exceeded home office hours:", "{:.2f}".format(self.report.target_work_from_home_hours_delta()))
-        #     print("Required hours in office to match quota:", "{:.2f}".format(self.report.required_work_from_office_hours_to_match_quota()))
-
-        # print()
-        # print("Remaining working days this month:", self.report.remaining_working_days)
-        # print("Public holidays considered:", self.report.holidays_current_month)
-        # print()
-        # print("Target working hours per day:", self.report.daily_work_hours)
-
-
-        # print("Maximum Home Office hours left: ", maxHomeOfficeLeft, " (", math.floor(maxHomeOfficeLeft / self.report.daily_work_hours), " days)", sep='')
-        # print("Projected hours working from the office needed: ", minOfficeLeft, " (", math.ceil(minOfficeLeft / self.report.daily_work_hours), " days)", sep='')
-        # print("-----")
-
         quota_color = "[red]" if is_above_target_quota else "[green]"
         table = Table(title=self.report.timeframe)
         table.add_column("")
