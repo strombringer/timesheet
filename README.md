@@ -29,6 +29,7 @@ The `-t` parameter is only needed for the highlighting of the current home offic
 | -quota | -q | TIMESHEET_QUOTA | 70 | Home Office quota |
 | -dateformat | -d | TIMESHEET_DATEFORMAT | %d.%m.%Y | Date format of the dates in the first line of the input files (e.g. 01.07.2024|
 | -format | -f | TIMESHEET_FORMAT |text \| json | text = nicely formatted report table, json = all values of the report as a json document|
+| -vacation | -v | TIMESHEET_VACATION | | single days, date ranges or a start date until the end of the month. mix and match as you want. e.g. 12,15-19,22- (day 12, and 15 to 19, and 22 until the end of the month)|
 
 Use the keys from `Name` or `Python Shortcut` as arguments when calling the Python script directly:
 
