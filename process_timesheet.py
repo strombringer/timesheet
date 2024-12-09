@@ -1,5 +1,5 @@
 from dataclasses import dataclass, asdict, field
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from rich.console import Console
 from rich.table import Table
 
@@ -27,6 +27,8 @@ class TimesheetReport:
     daily_work_hours: float = 0
     weekly_work_hours: float = 0
     remaining_working_days: int = 0
+    vacation_input: str = ''
+    vacation_days: str = ''
     holidays_current_month: list[str] = field(default_factory = lambda: ([]))
 
     def work_from_office_calculated(self) -> float:
@@ -88,13 +90,13 @@ class TimesheetProcessor:
         r'\s+anger. Arbeitszeit\s+(?P<actualWorkTime>[\d.,]{4,5})',
     ]
 
-    def __init__(self, input_source, quota, date_format):
+    def __init__(self, input_source, quota, date_format, vacation):
         # Compile the regex patterns
         self.compiled_regex_wfh = [re.compile(pattern) for pattern in self.regex_wfh]
         self.compiled_regex_wfo = [re.compile(pattern) for pattern in self.regex_wfo]
 
         self.input_source = input_source
-        self.report = TimesheetReport(target_work_from_home_quota=quota, date_format=date_format)
+        self.report = TimesheetReport(target_work_from_home_quota=quota, date_format=date_format, vacation_input=vacation)
         self._load_data(self.report)
 
     def _load_data(self, data: TimesheetReport) -> TimesheetReport:
@@ -131,11 +133,44 @@ class TimesheetProcessor:
     def _get_hours_worked(self, match):
         return float(match.group('actualWorkTime').replace(',', '.'))
 
+    def _parse_vacation_days(self, input: str, last_day_of_month: datetime) -> list[date]:
+        if not input:
+            return []
+        
+        vacations = input.split(',')
+        result = []
+
+        for vacation in vacations:
+            # Handle single date
+            if "-" not in vacation:
+                day = int(vacation)
+                result.append(datetime(last_day_of_month.year, last_day_of_month.month, day).date())
+            
+            # Handle ranges
+            elif "-" in vacation:
+                parts = vacation.split("-")
+                start_day = int(parts[0])
+                end_day = int(parts[1]) if parts[1] else last_day_of_month.day
+                
+                # Generate the range of dates
+                for day in range(start_day, end_day + 1):
+                    result.append(datetime(last_day_of_month.year, last_day_of_month.month, day).date())
+        
+        return result
+
     def _calculate_remaining_working_days(self, data: TimesheetReport):
         # Get the last day of the month
         date = data.timeframe_end
         next_month = date.replace(day=28) + timedelta(days=4)
         last_day_of_month = next_month - timedelta(days=next_month.day)
+
+        # Calculate the vacation days
+        vacation_group_size = 7 # for the output: how many vacation days per row
+        vacation_days = self._parse_vacation_days(data.vacation_input, last_day_of_month)
+        only_vacation_days_date = [v.strftime('%-d.') for v in vacation_days] # create a list of days only with the date part: e.g. "[3., 4., 5.]"
+        # join the list into a single string, adding a newline every vacation_group_size's item: e.g. "1., 2., 3., 4., 5., 6., 7.,\n8."
+        vacation_days_formatted = "\n".join(", ".join(only_vacation_days_date[i:i + vacation_group_size]) for i in range(0, len(only_vacation_days_date), vacation_group_size))
+        data.vacation_days = vacation_days_formatted
 
         # Create an array of all remaining days in the month
         remaining_days = np.arange(date + timedelta(days=1), last_day_of_month + timedelta(days=1), dtype='datetime64[D]')
@@ -145,8 +180,10 @@ class TimesheetProcessor:
         holidays_current_month = {k: v for k, v in holidays_by.items() if k.month == date.month}
         holidays_current_month_only_dates = [*holidays_current_month]
 
+        vacation_and_holidays = vacation_days + holidays_current_month_only_dates
+
         # Filter out weekends (Saturday=5, Sunday=6) and holidays
-        working_days = np.is_busday(remaining_days, holidays=holidays_current_month_only_dates)
+        working_days = np.is_busday(remaining_days, holidays=vacation_and_holidays)
 
         data.remaining_working_days = int(np.sum(working_days))
         data.holidays_current_month = [str(k)+ ": " + v for k, v in holidays_current_month.items()]
@@ -173,6 +210,7 @@ class TimesheetProcessor:
             table.add_row("Required office hours ({:.2f} % quota)".format(self.report.target_work_from_home_quota), "{:.2f} h".format(self.report.required_work_from_office_hours_to_match_quota()), end_section=True)
 
         table.add_row("Working days left", "{}".format(self.report.remaining_working_days))
+        table.add_row("Vacation days considered", self.report.vacation_days)
 
         holiday_table = Table(show_header=False)
         holiday_table.add_column()
@@ -208,12 +246,13 @@ def parse_arguments():
     parser.add_argument('-q', '--quota', help='Target work from home quota. default=70 (%)', type=float, default=70)
     parser.add_argument('-d', '--dateformat', help='The date format used in the timesheet. Required for parsing. default=%d.%m.%Y', type=str, default='%d.%m.%Y')
     parser.add_argument('-f', '--format', choices=['text', 'csv', 'json'], help='Desired output format. default=text', default='text')
+    parser.add_argument('-v', '--vacation', type=str, nargs='?', default=None, help='Your personal holidays, comma-separated. e.g. 12,15-19,22- (day 12 and 15 to 19 and 22 until the end of the month)')
     return parser.parse_args()
 
 def main():
     args = parse_arguments()
 
-    processor = TimesheetProcessor(args.input_source, args.quota, args.dateformat)
+    processor = TimesheetProcessor(args.input_source, args.quota, args.dateformat, args.vacation)
 
     if args.format == 'text':
         processor.output_as_text()

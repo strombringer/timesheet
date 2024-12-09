@@ -25,5 +25,6 @@ COPY process_timesheet.py /app/
 ENV TIMESHEET_QUOTA="70"
 ENV TIMESHEET_DATEFORMAT="%d.%m.%Y"
 ENV TIMESHEET_FORMAT="text"
+ENV TIMESHEET_VACATION=""
 
-CMD ["sh", "-c", "for f in /data/*.pdf; do pdftotext -layout \"$f\" - | python ./process_timesheet.py -q ${TIMESHEET_QUOTA} -d ${TIMESHEET_DATEFORMAT} -f ${TIMESHEET_FORMAT}; done"]
+CMD ["sh", "-c", "for f in /data/*.pdf; do pdftotext -layout \"$f\" - | python ./process_timesheet.py -q ${TIMESHEET_QUOTA} -d ${TIMESHEET_DATEFORMAT} -f ${TIMESHEET_FORMAT} -v ${TIMESHEET_VACATION}; done"]
