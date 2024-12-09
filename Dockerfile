@@ -4,12 +4,18 @@ ENV PYTHONUNBUFFERED 1
 
 WORKDIR /app
 
+# numpy wants this now for some reason
+RUN apk update && apk add --virtual build-dependencies build-base gcc
+
 RUN python -m venv /opt/venv
 # Enable venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 COPY ./requirements.txt /app/requirements.txt
 RUN pip install -Ur requirements.txt
+
+# delete the build dependencies again
+RUN apk del build-dependencies
 
 # Second stage: copy venv with python dependencies from first stage and install pdftotext tool
 FROM python:alpine3.19 AS runner
