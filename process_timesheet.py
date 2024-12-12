@@ -77,6 +77,7 @@ class TimesheetProcessor:
     regex_daily_work_hours = re.compile(r'.*IRTAZ:\s*([\d.,]{4,5})')
     regex_weekly_work_hours = re.compile(r'.*IRWAZ:\s*([\d.,]{4,5})')
     regex_total_hours_reported = re.compile(r'Leistungsstunden\s+([\d.,]{4,7})')
+    regex_reported_day = re.compile(r'^((?P<day>[0-9]{2})\s[A-Z]{2})')
 
     regex_wfh = [
         r'ganz.+Mobilarbeit\s+(?P<actualWorkTime>[\d.,]+)', # full day working from home
@@ -101,8 +102,13 @@ class TimesheetProcessor:
 
     def _load_data(self, data: TimesheetReport) -> TimesheetReport:
         # Logic to load data from input_file
+
+        last_reported_day: str = '0'
         with fileinput.input(files=self.input_source if self.input_source else ('-',)) as file:
             for line in file:
+                if (match := self.regex_reported_day.search(line)):
+                    last_reported_day = match.group('day')
+
                 if (match := self.regex_timeframe.search(line)):
                     data.timeframe = match.groups()[0] + " - " + match.groups()[1]
                     data.timeframe_start = datetime.strptime(match.groups()[0], data.date_format)
@@ -127,6 +133,8 @@ class TimesheetProcessor:
                                 data.work_from_office += self._get_hours_worked(match)
                                 break
 
+        data.timeframe_end = data.timeframe_end.replace(day=int(last_reported_day))
+        data.timeframe = data.timeframe_start.strftime("%d.%m.%Y") + " - " + data.timeframe_end.strftime("%d.%m.%Y")
         self._calculate_remaining_working_days(data)
         return data
 
