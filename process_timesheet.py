@@ -2,6 +2,9 @@ from dataclasses import dataclass, asdict, field
 from datetime import date, datetime, timedelta
 from rich.console import Console
 from rich.table import Table
+from rich.text import Text
+from rich.style import Style
+from functools import cached_property
 
 import argparse
 import fileinput
@@ -10,6 +13,44 @@ import json
 import math
 import numpy as np
 import re
+
+regex_timeframe = re.compile(r'(\d{2}.\d{2}.\d{4}) bis (\d{2}.\d{2}.\d{4})')
+regex_daily_work_hours = re.compile(r'.*IRTAZ:\s*([\d.,]{4,5})')
+regex_weekly_work_hours = re.compile(r'.*IRWAZ:\s*([\d.,]{4,5})')
+regex_total_hours_reported = re.compile(r'Leistungsstunden\s+([\d.,]{4,7})')
+regex_reported_day = re.compile(r'^((?P<day>[0-9]{2})\s[A-Z]{2})')
+
+regex_full_work_from_home = r'ganz.+Mobilarbeit\s+(?P<actualWorkTime>[\d.,]+)' # full day working from home
+regex_partial_work_from_home = r'anteilige Mobilarbeit:\s+(?P<actualWorkTime>[\d.,]+)' # partial day working from home
+regex_wfh = [
+    regex_full_work_from_home,
+    regex_partial_work_from_home,
+    r'Wochenerfassung Mobilarbeit\s+(?P<actualWorkTime>[\d.,]+)', # weekly working from home time not covered by the other checks
+]
+compiled_regex_full_work_from_home = re.compile(regex_full_work_from_home)
+compiled_regex_partial_work_from_home = re.compile(regex_partial_work_from_home)
+
+regex_office_day = r'(?P<dayOfMonth>\d{2}) (?P<dayOfWeek>\w{2})((?!Dienstr/).)*(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5}).*(?P<overTime>[\d.,]{4,5})' # work from office
+regex_wfo = [
+    regex_office_day,
+    r'Weiterbildung\s+(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5})', # training
+    r'\s+anger. Arbeitszeit\s+(?P<actualWorkTime>[\d.,]{4,5})',
+]
+compiled_regex_office_day = re.compile(regex_office_day)
+
+@dataclass(unsafe_hash=True)
+class Day:
+    source: list[str] = field(default_factory = lambda: ([]))
+    date: datetime = field(default_factory=datetime.now)
+    hours_worked: float = 0
+    worked_from_office: bool = False
+    worked_from_home: bool = False
+
+    def is_working_day(self) -> bool:
+        return self.hours_worked > 0
+
+    def is_counted_as_office_day(self) -> bool:
+        return self.worked_from_office and self.hours_worked >= 2
 
 @dataclass(unsafe_hash=True)
 class TimesheetReport:
@@ -30,6 +71,7 @@ class TimesheetReport:
     vacation_input: str = ''
     vacation_days: str = ''
     holidays_current_month: list[str] = field(default_factory = lambda: ([]))
+    days_of_month: list[Day] = field(default_factory = lambda: ([]))
 
     def work_from_office_calculated(self) -> float:
         return self.total_hours_reported - self.work_from_home
@@ -60,11 +102,19 @@ class TimesheetReport:
     def expected_working_hours_per_day(self) -> float:
         return self.weekly_work_hours / 5
 
+    def maximum_work_from_home_days_left(self) -> float:
+        totalWorkFromHomePossibleThisMonth = (self.number_of_days_worked + self.remaining_working_days) * self.target_work_from_home_quota / 100
+        return math.floor(totalWorkFromHomePossibleThisMonth - self.number_of_days_working_from_home)
+    
+    def projected_required_work_from_office_days(self) -> float:        
+        totalWorkFromOfficePossibleThisMonth = (self.number_of_days_worked + self.remaining_working_days) * (100 - self.target_work_from_home_quota) / 100
+        daysWorkedFromOffice = self.number_of_days_worked - self.number_of_days_working_from_home
+        return math.ceil(totalWorkFromOfficePossibleThisMonth - daysWorkedFromOffice)
+
     def maximum_work_from_home_hours_left(self) -> float:
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
         totalWorkFromHomePossibleThisMonth = (self.total_hours_reported + remainingExpectedHoursThisMonth) * self.target_work_from_home_quota / 100
         return round(totalWorkFromHomePossibleThisMonth - self.work_from_home, 2)
-
 
     def projected_required_work_from_office_hours(self) -> float:
         """The projected required number of hours working from the office, assuming set daily work hours and remaining days of the month, to match the set 'work from home' quota."""
@@ -72,29 +122,21 @@ class TimesheetReport:
         totalWorkFromOfficePossibleThisMonth = (self.total_hours_reported + remainingExpectedHoursThisMonth) * (100 - self.target_work_from_home_quota) / 100
         return round(totalWorkFromOfficePossibleThisMonth - self.work_from_office_calculated(), 2)
 
+    @cached_property
+    def number_of_days_worked(self) -> int:
+        """The total number of days with any hours worked."""
+        return sum(1 for day in self.days_of_month if day.is_working_day())
+    
+    @cached_property
+    def number_of_days_working_from_home(self) -> int:
+        """The number of days working exclusively from home."""
+        return sum(1 for day in self.days_of_month if day.worked_from_home)
+
 class TimesheetProcessor:
-    regex_timeframe = re.compile(r'(\d{2}.\d{2}.\d{4}) bis (\d{2}.\d{2}.\d{4})')
-    regex_daily_work_hours = re.compile(r'.*IRTAZ:\s*([\d.,]{4,5})')
-    regex_weekly_work_hours = re.compile(r'.*IRWAZ:\s*([\d.,]{4,5})')
-    regex_total_hours_reported = re.compile(r'Leistungsstunden\s+([\d.,]{4,7})')
-    regex_reported_day = re.compile(r'^((?P<day>[0-9]{2})\s[A-Z]{2})')
-
-    regex_wfh = [
-        r'ganz.+Mobilarbeit\s+(?P<actualWorkTime>[\d.,]+)', # full day working from home
-        r'anteilige Mobilarbeit:\s+(?P<actualWorkTime>[\d.,]+)', # partial day working from home
-        r'Wochenerfassung Mobilarbeit\s+(?P<actualWorkTime>[\d.,]+)', # weekly working from home time not covered by the other checks
-    ]
-
-    regex_wfo = [
-        r'(?P<dayOfMonth>\d{2}) (?P<dayOfWeek>\w{2})((?!Dienstr/).)*(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5}).*(?P<overTime>[\d.,]{4,5})', # work from office
-        r'Weiterbildung\s+(?P<startTime>\d{2}:\d{2}).*(?P<endTime>\d{2}:\d{2}).*(?P<break>[\d.,]{4,5}).*(?P<actualWorkTime>[\d.,]{4,5}).*(?P<expectedWorkTime>[\d.,]{4,5})', # training
-        r'\s+anger. Arbeitszeit\s+(?P<actualWorkTime>[\d.,]{4,5})',
-    ]
-
     def __init__(self, input_source, quota, date_format, vacation):
         # Compile the regex patterns
-        self.compiled_regex_wfh = [re.compile(pattern) for pattern in self.regex_wfh]
-        self.compiled_regex_wfo = [re.compile(pattern) for pattern in self.regex_wfo]
+        self.compiled_regex_wfh = [re.compile(pattern) for pattern in regex_wfh]
+        self.compiled_regex_wfo = [re.compile(pattern) for pattern in regex_wfo]
 
         self.input_source = input_source
         self.report = TimesheetReport(target_work_from_home_quota=quota, date_format=date_format, vacation_input=vacation)
@@ -103,21 +145,41 @@ class TimesheetProcessor:
     def _load_data(self, data: TimesheetReport) -> TimesheetReport:
         # Logic to load data from input_file
 
-        last_reported_day: str = '0'
+        last_reported_day: Day = Day()
         with fileinput.input(files=self.input_source if self.input_source else ('-',)) as file:
             for line in file:
-                if (match := self.regex_reported_day.search(line)):
-                    last_reported_day = match.group('day')
+                # determine whether the line is a daily time report and then what kind
+                if (match := regex_reported_day.search(line)):
+                    last_reported_day = Day(source=[line], date=data.timeframe_start.replace(day=int(match.group('day'))))
+                    data.days_of_month.append(last_reported_day)
 
-                if (match := self.regex_timeframe.search(line)):
+                    if (match2 := compiled_regex_full_work_from_home.search(line)):
+                        last_reported_day.hours_worked = self._get_hours_worked(match2)
+                        last_reported_day.worked_from_home = True
+                    else:
+                        for regex in self.compiled_regex_wfo:
+                            if (match2 := regex.search(line)):
+                                last_reported_day.hours_worked = self._get_hours_worked(match2)
+                                last_reported_day.worked_from_office = True
+                                break
+
+                elif (match := compiled_regex_partial_work_from_home.search(line)):
+                    # "partial work from home" is noted in the line AFTER the line with the date
+                    # this only shows up on days without any office time registered
+                    last_reported_day.source.append(line)
+                    last_reported_day.hours_worked = self._get_hours_worked(match)
+                    last_reported_day.worked_from_home = True
+
+                # not a daily time report, but some other information
+                if (match := regex_timeframe.search(line)):
                     data.timeframe = match.groups()[0] + " - " + match.groups()[1]
                     data.timeframe_start = datetime.strptime(match.groups()[0], data.date_format)
                     data.timeframe_end = datetime.strptime(match.groups()[1], data.date_format)
-                elif (match := self.regex_daily_work_hours.search(line)):
+                elif (match := regex_daily_work_hours.search(line)):
                     data.daily_work_hours = float(match.groups()[0].replace(',', '.'))
-                elif (match := self.regex_weekly_work_hours.search(line)):
+                elif (match := regex_weekly_work_hours.search(line)):
                     data.weekly_work_hours = float(match.groups()[0].replace(',', '.'))
-                elif (match := self.regex_total_hours_reported.search(line)):
+                elif (match := regex_total_hours_reported.search(line)):
                     data.total_hours_reported = float(match.groups()[0].replace(',', '.'))
                 else:
                     matched = False
@@ -133,7 +195,7 @@ class TimesheetProcessor:
                                 data.work_from_office += self._get_hours_worked(match)
                                 break
 
-        data.timeframe_end = data.timeframe_end.replace(day=int(last_reported_day))
+        data.timeframe_end = last_reported_day.date
         data.timeframe = data.timeframe_start.strftime("%d.%m.%Y") + " - " + data.timeframe_end.strftime("%d.%m.%Y")
         self._calculate_remaining_working_days(data)
         return data
@@ -196,30 +258,36 @@ class TimesheetProcessor:
         data.remaining_working_days = int(np.sum(working_days))
         data.holidays_current_month = [str(k)+ ": " + v for k, v in holidays_current_month.items()]
 
+    def _calculate_number_of_days_worked(self, data: TimesheetReport) -> int:
+        return sum(1 for day in data.days_of_month if day.is_working_day())
+    
+    def _calculate_number_of_days_exclusively_working_from_home(self, data: TimesheetReport) -> int:
+        return sum(1 for day in data.days_of_month if day.worked_from_home)
+
 
     def output_as_text(self):
+        # "old" calculation, hours-based
         is_above_target_quota = self.report.actual_work_from_home_quota() > self.report.target_work_from_home_quota
         maxHomeOfficeLeft = self.report.maximum_work_from_home_hours_left()
         minOfficeLeft = self.report.projected_required_work_from_office_hours()
-
         quota_color = "[red]" if is_above_target_quota else "[green]"
+
+        # "new" calculation (1.4.2025+), day-based
+        if self.report.number_of_days_worked == 0:
+            day_quota = 0
+        else:
+            day_quota = self.report.number_of_days_working_from_home / self.report.number_of_days_worked * 100
+        is_above_target_days_quota = day_quota > self.report.target_work_from_home_quota
+        quota_color_days = "[red]" if is_above_target_days_quota else "[green]"
+        maxHomeOfficeDaysLeft = self.report.maximum_work_from_home_days_left()
+        minOfficeDaysLeft = self.report.projected_required_work_from_office_days()
+        
         table = Table(title=self.report.timeframe)
-        table.add_column("")
-        table.add_column("Value", justify="right")
-        # table.add_column("Description")
-
-        table.add_row("Home Hours", "{:.2f} h".format(self.report.work_from_home))
-        table.add_row("Office Hours", "{:.2f} h".format(self.report.work_from_office_calculated()))
-        table.add_row("Total Hours", "{:.2f} h".format(self.report.total_hours_reported))
-        table.add_row("Home office quota", quota_color + "{:.2f}".format(self.report.actual_work_from_home_quota()) + " %", end_section=True)
-
-        if (is_above_target_quota):
-            table.add_row("Exceeded home office hours", "{:.2f} h".format(self.report.target_work_from_home_hours_delta()))
-            table.add_row("Required office hours ({:.2f} % quota)".format(self.report.target_work_from_home_quota), "{:.2f} h".format(self.report.required_work_from_office_hours_to_match_quota()), end_section=True)
-
+        
         table.add_row("Working days left", "{}".format(self.report.remaining_working_days))
         table.add_row("Vacation days considered", self.report.vacation_days)
 
+        # separate table for holidays, which is embedded in the bigger table
         holiday_table = Table(show_header=False)
         holiday_table.add_column()
         for x in self.report.holidays_current_month:
@@ -227,10 +295,41 @@ class TimesheetProcessor:
 
         table.add_row("Public holidays considered", holiday_table if holiday_table.rows else "-")
         table.add_row("Working hours per day", "{:.2f}".format(self.report.daily_work_hours))
+        table.add_section()
+        table.add_row()
+        table.add_section()
 
+        # section for "old" calculation
+        table.add_row(Text.from_markup("Hours-based calculation", style=Style(bold=True)), Text.from_markup("Valid until 1.4.2025", style=Style(bold=True)))
+        table.add_row("Home Hours", "{:.2f} h".format(self.report.work_from_home))
+        table.add_row("Office Hours", "{:.2f} h".format(self.report.work_from_office_calculated()))
+        table.add_row("Total Hours", "{:.2f} h".format(self.report.total_hours_reported))
+        table.add_row("Home office quota", quota_color + "{:.2f}".format(self.report.actual_work_from_home_quota()) + " %")
+        table.add_section()
+
+        if (is_above_target_quota):
+            table.add_row("Exceeded home office hours", "{:.2f} h".format(self.report.target_work_from_home_hours_delta()))
+            table.add_row("Required office hours ({:.2f} % quota)".format(self.report.target_work_from_home_quota), "{:.2f} h".format(self.report.required_work_from_office_hours_to_match_quota()))
+            table.add_section()
+
+        # required hours
         table.add_row("Maximum Home Office hours left", "{:.2f}".format(maxHomeOfficeLeft) + " ({}".format(math.floor(maxHomeOfficeLeft / self.report.daily_work_hours)) + " days)")
-        table.add_row("Minimum Office hours needed", "{:.2f}".format(minOfficeLeft) + " ({}".format(math.ceil(minOfficeLeft / self.report.daily_work_hours)) + " days)", end_section=True)
+        table.add_row("Minimum Office hours needed", "{:.2f}".format(minOfficeLeft) + " ({}".format(math.ceil(minOfficeLeft / self.report.daily_work_hours)) + " days)")
+        table.add_section()
+        table.add_row()
+        table.add_section()
 
+        # section for "new" calculation
+        table.add_row(Text.from_markup("Day-based calculation", style=Style(bold=True)), Text.from_markup("Valid from 1.4.2025", style=Style(bold=True)))
+        table.add_row("Number of Home Office days", "{}".format(self.report.number_of_days_working_from_home))
+        table.add_row("Number of days worked", "{}".format(self.report.number_of_days_worked))
+        table.add_row("Home office quota", quota_color_days + "{:.2f}".format(day_quota) + " %")
+        table.add_section()
+
+        table.add_row("Maximum Home Office days left", "{}".format(maxHomeOfficeDaysLeft))
+        table.add_row("Minimum Office days needed", "{}".format(minOfficeDaysLeft))
+        table.add_section()
+        
         console = Console()
         console.print(table)
 
