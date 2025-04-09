@@ -4,6 +4,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.text import Text
 from rich.style import Style
+from functools import cached_property
 
 import argparse
 import fileinput
@@ -40,7 +41,7 @@ compiled_regex_office_day = re.compile(regex_office_day)
 @dataclass(unsafe_hash=True)
 class Day:
     source: list[str] = field(default_factory = lambda: ([]))
-    date: datetime = datetime.now()
+    date: datetime = field(default_factory=datetime.now)
     hours_worked: float = 0
     worked_from_office: bool = False
     worked_from_home: bool = False
@@ -101,17 +102,35 @@ class TimesheetReport:
     def expected_working_hours_per_day(self) -> float:
         return self.weekly_work_hours / 5
 
+    def maximum_work_from_home_days_left(self) -> float:
+        totalWorkFromHomePossibleThisMonth = (self.number_of_days_worked + self.remaining_working_days) * self.target_work_from_home_quota / 100
+        return math.floor(totalWorkFromHomePossibleThisMonth - self.number_of_days_working_from_home)
+    
+    def projected_required_work_from_office_days(self) -> float:        
+        totalWorkFromOfficePossibleThisMonth = (self.number_of_days_worked + self.remaining_working_days) * (100 - self.target_work_from_home_quota) / 100
+        daysWorkedFromOffice = self.number_of_days_worked - self.number_of_days_working_from_home
+        return math.ceil(totalWorkFromOfficePossibleThisMonth - daysWorkedFromOffice)
+
     def maximum_work_from_home_hours_left(self) -> float:
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
         totalWorkFromHomePossibleThisMonth = (self.total_hours_reported + remainingExpectedHoursThisMonth) * self.target_work_from_home_quota / 100
         return round(totalWorkFromHomePossibleThisMonth - self.work_from_home, 2)
-
 
     def projected_required_work_from_office_hours(self) -> float:
         """The projected required number of hours working from the office, assuming set daily work hours and remaining days of the month, to match the set 'work from home' quota."""
         remainingExpectedHoursThisMonth = self.expected_working_hours_per_day() * self.remaining_working_days
         totalWorkFromOfficePossibleThisMonth = (self.total_hours_reported + remainingExpectedHoursThisMonth) * (100 - self.target_work_from_home_quota) / 100
         return round(totalWorkFromOfficePossibleThisMonth - self.work_from_office_calculated(), 2)
+
+    @cached_property
+    def number_of_days_worked(self) -> int:
+        """The total number of days with any hours worked."""
+        return sum(1 for day in self.days_of_month if day.is_working_day())
+    
+    @cached_property
+    def number_of_days_working_from_home(self) -> int:
+        """The number of days working exclusively from home."""
+        return sum(1 for day in self.days_of_month if day.worked_from_home)
 
 class TimesheetProcessor:
     def __init__(self, input_source, quota, date_format, vacation):
@@ -247,18 +266,21 @@ class TimesheetProcessor:
 
 
     def output_as_text(self):
-        # "old" calculation
+        # "old" calculation, hours-based
         is_above_target_quota = self.report.actual_work_from_home_quota() > self.report.target_work_from_home_quota
         maxHomeOfficeLeft = self.report.maximum_work_from_home_hours_left()
         minOfficeLeft = self.report.projected_required_work_from_office_hours()
         quota_color = "[red]" if is_above_target_quota else "[green]"
 
-        # "new" calculation (1.4.2025+)
-        number_of_days_worked = self._calculate_number_of_days_worked(self.report)
-        number_of_days_exclusively_working_from_home = self._calculate_number_of_days_exclusively_working_from_home(self.report)
-        day_quota = (number_of_days_exclusively_working_from_home / number_of_days_worked) * 100
+        # "new" calculation (1.4.2025+), day-based
+        if self.report.number_of_days_worked == 0:
+            day_quota = 0
+        else:
+            day_quota = self.report.number_of_days_working_from_home / self.report.number_of_days_worked * 100
         is_above_target_days_quota = day_quota > self.report.target_work_from_home_quota
         quota_color_days = "[red]" if is_above_target_days_quota else "[green]"
+        maxHomeOfficeDaysLeft = self.report.maximum_work_from_home_days_left()
+        minOfficeDaysLeft = self.report.projected_required_work_from_office_days()
         
         table = Table(title=self.report.timeframe)
         
@@ -274,9 +296,11 @@ class TimesheetProcessor:
         table.add_row("Public holidays considered", holiday_table if holiday_table.rows else "-")
         table.add_row("Working hours per day", "{:.2f}".format(self.report.daily_work_hours))
         table.add_section()
+        table.add_row()
+        table.add_section()
 
         # section for "old" calculation
-        table.add_row(Text.from_markup("Valid until 1.4.2025", style=Style(bold=True)))
+        table.add_row(Text.from_markup("Hours-based calculation", style=Style(bold=True)), Text.from_markup("Valid until 1.4.2025", style=Style(bold=True)))
         table.add_row("Home Hours", "{:.2f} h".format(self.report.work_from_home))
         table.add_row("Office Hours", "{:.2f} h".format(self.report.work_from_office_calculated()))
         table.add_row("Total Hours", "{:.2f} h".format(self.report.total_hours_reported))
@@ -288,20 +312,24 @@ class TimesheetProcessor:
             table.add_row("Required office hours ({:.2f} % quota)".format(self.report.target_work_from_home_quota), "{:.2f} h".format(self.report.required_work_from_office_hours_to_match_quota()))
             table.add_section()
 
-
-        # section for "new" calculation
-        table.add_row(Text.from_markup("Valid from 1.4.2025", style=Style(bold=True)))
-        table.add_row("Number of Home Office days", "{}".format(number_of_days_exclusively_working_from_home))
-        table.add_row("Number of days worked", "{}".format(number_of_days_worked))
-        table.add_row("Home office quota", quota_color_days + "{:.2f}".format(day_quota) + " %")
-        table.add_section()
-
-        
         # required hours
         table.add_row("Maximum Home Office hours left", "{:.2f}".format(maxHomeOfficeLeft) + " ({}".format(math.floor(maxHomeOfficeLeft / self.report.daily_work_hours)) + " days)")
         table.add_row("Minimum Office hours needed", "{:.2f}".format(minOfficeLeft) + " ({}".format(math.ceil(minOfficeLeft / self.report.daily_work_hours)) + " days)")
         table.add_section()
+        table.add_row()
+        table.add_section()
 
+        # section for "new" calculation
+        table.add_row(Text.from_markup("Day-based calculation", style=Style(bold=True)), Text.from_markup("Valid from 1.4.2025", style=Style(bold=True)))
+        table.add_row("Number of Home Office days", "{}".format(self.report.number_of_days_working_from_home))
+        table.add_row("Number of days worked", "{}".format(self.report.number_of_days_worked))
+        table.add_row("Home office quota", quota_color_days + "{:.2f}".format(day_quota) + " %")
+        table.add_section()
+
+        table.add_row("Maximum Home Office days left", "{}".format(maxHomeOfficeDaysLeft))
+        table.add_row("Minimum Office days needed", "{}".format(minOfficeDaysLeft))
+        table.add_section()
+        
         console = Console()
         console.print(table)
 
